@@ -13,13 +13,14 @@
 <style>
   :root { --s: 1; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-  /* iOS home-screen apps report 100% height minus the status bar: size by the large viewport and paint the wallpaper on html as a fallback */
+  /* iOS home-screen apps lay out the page shorter than the screen (minus the status bar).
+     The page keeps that size so touches line up; the wallpaper is painted on html, which iOS extends over the whole screen. */
   html { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: #6a5a9a url(assets/wallpaper.jpg) center / cover no-repeat; }
-  body { margin: 0; position: fixed; left: 0; top: 0; width: 100%; height: 100vh; height: 100lvh; overflow: hidden; overscroll-behavior: none; font-family: -apple-system, "SF Pro Text", "SF Pro", system-ui, sans-serif; color: #fff; touch-action: none; }
+  html.cam { background: #000; }
+  body { margin: 0; position: fixed; inset: 0; overflow: hidden; overscroll-behavior: none; font-family: -apple-system, "SF Pro Text", "SF Pro", system-ui, sans-serif; color: #fff; touch-action: none; }
 
   /* ---------- Home screen ---------- */
-  #home { position: absolute; inset: 0; overflow: hidden; background: linear-gradient(180deg, #c7c2d6 0%, #d8ddda 45%, #cfddd6 100%); }
-  #home .wall { position: absolute; inset: 0; background: url(assets/wallpaper.jpg) center / cover no-repeat; }
+  #home { position: absolute; inset: 0; overflow: hidden; }
   /* 402pt design canvas scaled to device width */
   #stage { position: absolute; left: 0; top: 0; width: 402px; height: 874px; transform-origin: 0 0; transform: scale(var(--s)); }
 
@@ -49,7 +50,7 @@
   .cam-top { position: absolute; left: 0; right: 0; top: 0; height: calc(env(safe-area-inset-top) + 56px); background: linear-gradient(rgba(0,0,0,.55), rgba(0,0,0,0)); pointer-events: none; }
   .cam-close { position: absolute; left: 16px; top: calc(env(safe-area-inset-top) + 10px); width: 36px; height: 36px; border-radius: 50%; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; }
   .cam-close svg { width: 16px; height: 16px; }
-  .cam-bottom { position: absolute; left: 0; right: 0; bottom: 0; padding-bottom: calc(env(safe-area-inset-bottom) + 18px); padding-top: 14px; background: rgba(0,0,0,.5); }
+  .cam-bottom { position: absolute; left: 0; right: 0; bottom: 0; padding-bottom: calc(max(0px, env(safe-area-inset-bottom) - var(--gap, 0px)) + 18px); padding-top: 14px; background: rgba(0,0,0,.5); }
   .zoom { display: flex; justify-content: center; gap: 10px; margin-bottom: 16px; }
   .zoom button { width: 38px; height: 38px; border-radius: 50%; border: 0; background: rgba(0,0,0,.45); color: #fff; font: 600 12px -apple-system, system-ui, sans-serif; }
   .zoom button.on { color: #ffd60a; font-size: 13px; }
@@ -65,7 +66,6 @@
 </head>
 <body>
 <div id="home">
-  <div class="wall"></div>
   <div id="stage">
 
     <div class="widget"><div class="blur" id="wblur"></div><div class="bg"></div><div class="rim"></div></div>
@@ -115,6 +115,9 @@ const WALL = { w: 1239, h: 2682 };
 function fit() {
   const s = document.body.clientWidth / 402;
   document.documentElement.style.setProperty('--s', s);
+  // space iOS leaves below the page (home-screen app quirk); the home indicator already sits there
+  const gap = Math.max(0, Math.max(screen.width, screen.height) - document.body.clientHeight);
+  document.documentElement.style.setProperty('--gap', (innerHeight > innerWidth ? gap : 0) + 'px');
   // widget glass: place a blurred copy of the wallpaper exactly under the widget (no backdrop-filter, iOS renders it black)
   const vw = document.body.clientWidth, vh = document.body.clientHeight, k = Math.max(vw / WALL.w, vh / WALL.h);
   const bw = WALL.w * k, bh = WALL.h * k, bx = (vw - bw) / 2, by = (vh - bh) / 2;
@@ -163,7 +166,7 @@ function openCamera(iconEl) {
   // must be inside the tap handler for iOS permission prompt
   askMotion().then(ok => { if (ok) startGyro(); });
   const r = iconEl.querySelector('.hit').getBoundingClientRect();
-  cam.classList.add('open');
+  cam.classList.add('open'); document.documentElement.classList.add('cam');
   initGL();
   q0 = null; touchYaw = 0; touchPitch = 0;
   const ox = r.left + r.width / 2, oy = r.top + r.height / 2;
@@ -176,7 +179,7 @@ function openCamera(iconEl) {
 
 document.getElementById('close').addEventListener('click', () => {
   const a = cam.animate([{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.2)', opacity: 0 }], { duration: 260, easing: 'ease-in' });
-  a.onfinish = () => { cam.classList.remove('open'); running = false; };
+  a.onfinish = () => { cam.classList.remove('open'); document.documentElement.classList.remove('cam'); running = false; };
 });
 
 /* ---- gyro ---- */
