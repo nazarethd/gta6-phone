@@ -107,7 +107,7 @@ APPS.forEach(([id, name, badge], i) => {
   const el = document.createElement('div');
   el.className = 'app'; el.dataset.app = id;
   el.style.left = COL_X[i % 4] + 'px'; el.style.top = ROW_Y[Math.floor(i / 4)] + 'px';
-  el.innerHTML = `<img class="art" src="assets/${id}.png" alt=""><div class="hit"></div><div class="label">${name}</div>` +
+  el.innerHTML = `<img class="art" src="assets/${id}.png?v=2" alt=""><div class="hit"></div><div class="label">${name}</div>` +
     (badge ? `<div class="badge">${badge}</div>` : '');
   grid.appendChild(el);
 });
