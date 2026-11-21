@@ -134,6 +134,7 @@ addEventListener('pointercancel', () => document.querySelectorAll('.app.pressed'
 grid.addEventListener('click', e => {
   const a = e.target.closest('.app');
   if (a && a.dataset.app === 'camera') openCamera(a);
+  if (a && a.dataset.app === 'settings') exportMotion();
 });
 
 /* ================= Camera ================= */
@@ -165,7 +166,8 @@ function openCamera(iconEl) {
   const r = iconEl.querySelector('.hit').getBoundingClientRect();
   cam.classList.add('open'); document.documentElement.classList.add('cam');
   initGL();
-  q0 = null; touchYaw = 0; touchPitch = 0;
+  q0 = null; qTarget = [1,0,0,0]; qCur = [1,0,0,0]; touchYaw = 0; touchPitch = 0; zoom = zoomTarget = 1; setZoom(1);
+  startRecording();
   const ox = r.left + r.width / 2, oy = r.top + r.height / 2;
   cam.animate([
     { transformOrigin: `${ox}px ${oy}px`, transform: `scale(${r.width / innerWidth})`, borderRadius: `${innerWidth}px`, opacity: .2 },
@@ -176,7 +178,7 @@ function openCamera(iconEl) {
 
 document.getElementById('close').addEventListener('click', () => {
   const a = cam.animate([{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.2)', opacity: 0 }], { duration: 260, easing: 'ease-in' });
-  a.onfinish = () => { cam.classList.remove('open'); document.documentElement.classList.remove('cam'); running = false; };
+  a.onfinish = () => { cam.classList.remove('open'); document.documentElement.classList.remove('cam'); running = false; saveRecording(); };
 });
 
 /* ---- gyro ---- */
@@ -260,6 +262,40 @@ shutter.addEventListener('click', () => {
   flash.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => flash.classList.remove('on')));
 });
 
+/* ---- motion recording: starts from zero on every camera open, overwrites the previous take ---- */
+const REC_KEY = 'motion-latest';
+let rec = null, lastSave = 0;
+function startRecording() {
+  rec = { version: 1, created: new Date().toISOString(), rate: 'display', fields: ['t', 'qw', 'qx', 'qy', 'qz', 'touchYaw', 'touchPitch', 'zoom'],
+          note: 'q = phone rotation relative to the moment the camera opened (camera looks along -Z, up +Y). t in seconds.', samples: [] };
+  rec.t0 = performance.now();
+  saveRecording();
+}
+function recordSample() {
+  if (!rec) return;
+  const t = (performance.now() - rec.t0) / 1000;
+  const q = hasGyro ? qTarget : [1, 0, 0, 0];
+  const r = v => Math.round(v * 1e6) / 1e6;
+  rec.samples.push([r(t), r(q[0]), r(q[1]), r(q[2]), r(q[3]), r(touchYaw), r(touchPitch), r(zoom)]);
+  if (t - lastSave > 2) { lastSave = t; saveRecording(); }
+}
+function saveRecording() {
+  if (!rec) return;
+  try { const { t0, ...data } = rec; localStorage.setItem(REC_KEY, JSON.stringify(data)); } catch (e) {}
+}
+async function exportMotion() {
+  saveRecording();
+  let json = null; try { json = localStorage.getItem(REC_KEY); } catch (e) {}
+  if (!json) { alert('Пока нет записи: открой камеру и подвигай телефон.'); return; }
+  const name = 'motion-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.json';
+  const file = new File([json], name, { type: 'application/json' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file] }); return; }
+  } catch (e) { if (e.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
 /* ---- WebGL panorama ---- */
 function initGL() {
   if (gl) return;
@@ -317,6 +353,7 @@ function draw() {
 function frame() {
   if (!running) return;
   draw();
+  recordSample();
   requestAnimationFrame(frame);
 }
 </script>

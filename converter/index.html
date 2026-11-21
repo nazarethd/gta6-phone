@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Motion → Footage</title>
+<style>
+  :root { --bg: #111114; --panel: #1b1b20; --line: #2c2c34; --text: #e9e9ee; --dim: #8d8d99; --acc: #ff5b8a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 -apple-system, system-ui, "Segoe UI", sans-serif; }
+  .wrap { display: grid; grid-template-columns: 1fr 340px; gap: 16px; padding: 16px; min-height: 100vh; }
+  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
+  h1 { font-size: 16px; margin: 0 0 12px; font-weight: 600; }
+  .stage { background: #000; border-radius: 10px; overflow: hidden; position: relative; aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center; }
+  .stage canvas { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .stage .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--dim); text-align: center; padding: 20px; pointer-events: none; }
+  .transport { display: flex; gap: 10px; align-items: center; margin: 10px 0; }
+  .transport input[type=range] { flex: 1; }
+  .time { font-variant-numeric: tabular-nums; color: var(--dim); min-width: 92px; text-align: right; }
+  #chart { width: 100%; height: 150px; background: var(--panel); border-radius: 10px; display: block; }
+  .legend { display: flex; gap: 14px; color: var(--dim); font-size: 12px; margin-top: 6px; }
+  .legend i { display: inline-block; width: 10px; height: 2px; vertical-align: middle; margin-right: 5px; }
+  aside { background: var(--panel); border-radius: 12px; padding: 14px; align-self: start; }
+  .drop { border: 1.5px dashed var(--line); border-radius: 10px; padding: 12px; margin-bottom: 10px; cursor: pointer; transition: border-color .15s; }
+  .drop.over, .drop:hover { border-color: var(--acc); }
+  .drop b { display: block; font-weight: 600; }
+  .drop span { color: var(--dim); font-size: 12px; word-break: break-all; }
+  .drop.ok b::after { content: '  ✓'; color: #4cd964; }
+  .row { margin: 12px 0; }
+  .row label { display: flex; justify-content: space-between; color: var(--dim); font-size: 12px; margin-bottom: 4px; }
+  .row label output { color: var(--text); font-variant-numeric: tabular-nums; }
+  .row input[type=range] { width: 100%; }
+  select, button { font: inherit; color: var(--text); background: #26262d; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }
+  select { width: 100%; }
+  .seg { display: flex; gap: 6px; }
+  .seg button { flex: 1; }
+  .seg button.on { border-color: var(--acc); color: #fff; }
+  .check { display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: 13px; margin: 8px 0; }
+  .dl { display: grid; gap: 8px; margin-top: 14px; border-top: 1px solid var(--line); padding-top: 14px; }
+  .dl button { background: var(--acc); border: 0; color: #fff; font-weight: 600; padding: 10px; }
+  .dl button.sec { background: #26262d; border: 1px solid var(--line); font-weight: 500; }
+  .dl button:disabled { opacity: .4; }
+  .hint { color: var(--dim); font-size: 12px; margin-top: 6px; }
+  #status { color: var(--dim); font-size: 12px; min-height: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <main>
+    <h1>Движение телефона → футаж</h1>
+    <div class="stage" id="stage"><canvas id="out"></canvas><div class="empty" id="empty">Загрузи видео и файл движения справа<br>(или перетащи их сюда)</div></div>
+    <div class="transport">
+      <button id="play" disabled>▶︎</button>
+      <input type="range" id="seek" min="0" max="1000" value="0" disabled>
+      <span class="time" id="time">0.00 / 0.00</span>
+    </div>
+    <canvas id="chart"></canvas>
+    <div class="legend"><span><i style="background:#ff5b8a"></i>поворот влево-вправо</span><span><i style="background:#4cc3ff"></i>наклон вверх-вниз</span><span><i style="background:#ffd166"></i>крен</span><span>° после обработки</span></div>
+  </main>
+
+  <aside>
+    <div class="drop" id="dropVideo"><b>Видео</b><span id="videoName">выбрать файл .mp4 / .mov</span><input type="file" id="fileVideo" accept="video/*" hidden></div>
+    <div class="drop" id="dropMotion"><b>Движение</b><span id="motionName">файл motion-….json с телефона (иконка Settings)</span><input type="file" id="fileMotion" accept=".json,application/json" hidden></div>
+
+    <div class="row"><label>Режим</label>
+      <div class="seg"><button id="modeShake" class="on">Только тряска</button><button id="modeFull">Всё движение</button></div>
+      <div class="hint" id="modeHint">Оставляет живые мелкие движения руки, а крупные повороты убирает: камера игры уже двигается сама.</div>
+    </div>
+    <div class="row"><label>Сила <output id="vStrength"></output></label><input type="range" id="strength" min="0" max="3" step="0.05" value="1"></div>
+    <div class="row" id="rowWindow"><label>Что считать тряской, сек <output id="vWindow"></output></label><input type="range" id="window" min="0.2" max="4" step="0.05" value="1"></div>
+    <div class="row"><label>Сглаживание, кадров <output id="vSmooth"></output></label><input type="range" id="smooth" min="0" max="10" step="0.5" value="1"></div>
+    <div class="row"><label>Сдвиг синхронизации, сек <output id="vOffset"></output></label><input type="range" id="offset" min="-10" max="10" step="0.01" value="0"></div>
+    <div class="row"><label>Угол обзора футажа (по горизонтали), ° <output id="vFov"></output></label><input type="range" id="fov" min="30" max="120" step="1" value="80"></div>
+    <div class="row"><label>Частота кадров</label>
+      <select id="fps"><option>23.976</option><option>24</option><option>25</option><option>29.97</option><option>30</option><option>50</option><option selected>59.94</option><option>60</option></select>
+    </div>
+    <label class="check"><input type="checkbox" id="roll" checked> Учитывать крен</label>
+    <label class="check"><input type="checkbox" id="autoscale" checked> Увеличить кадр, чтобы не было пустых краёв <output id="vScale"></output></label>
+
+    <div class="dl">
+      <button id="dlVideo" disabled>Скачать видео с движением</button>
+      <button id="dlAE" class="sec" disabled>Ключи для After Effects (.txt)</button>
+      <button id="dlBlender" class="sec" disabled>Скрипт для камеры Blender (.py)</button>
+      <div id="status"></div>
+      <div class="hint">After Effects: открой .txt, скопируй всё, выдели слой с футажом и вставь (Ctrl/Cmd+V) на первом кадре.<br>Видео пишется в реальном времени и без звука, звук бери из оригинала.</div>
+    </div>
+  </aside>
+</div>
+
+<video id="vid" playsinline muted preload="auto" style="display:none"></video>
+
+<script>
+const $ = id => document.getElementById(id);
+const vid = $('vid'), out = $('out'), ctx = out.getContext('2d'), chart = $('chart'), cctx = chart.getContext('2d');
+let motion = null;          // { t:[], yaw:[], pitch:[], roll:[] } raw, radians, unwrapped
+let track = null;           // per-frame processed { dx, dy, rot, s, yaw, pitch, roll, n, fps }
+let mode = 'shake', videoName = 'footage', recording = false;
+
+/* ---------- inputs ---------- */
+function bindDrop(box, input, handler) {
+  box.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => input.files[0] && handler(input.files[0]));
+}
+bindDrop($('dropVideo'), $('fileVideo'), loadVideo);
+bindDrop($('dropMotion'), $('fileMotion'), loadMotion);
+['dragover', 'dragenter'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); }));
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  for (const f of e.dataTransfer.files) {
+    if (f.type.startsWith('video/') || /\.(mp4|mov|m4v|webm)$/i.test(f.name)) loadVideo(f);
+    else if (/\.json$/i.test(f.name) || f.type === 'application/json') loadMotion(f);
+  }
+});
+
+function loadVideo(file) {
+  videoName = file.name.replace(/\.[^.]+$/, '');
+  vid.src = URL.createObjectURL(file);
+  $('videoName').textContent = file.name; $('dropVideo').classList.add('ok');
+  vid.onloadedmetadata = () => { out.width = vid.videoWidth; out.height = vid.videoHeight; $('stage').style.aspectRatio = `${vid.videoWidth} / ${vid.videoHeight}`; $('empty').style.display = 'none'; rebuild(); vid.currentTime = 0; };
+  vid.onseeked = render;
+}
+
+async function loadMotion(file) {
+  try {
+    const data = JSON.parse(await file.text());
+    const S = data.samples;
+    if (!S || !S.length) throw new Error('В файле нет данных');
+    const t = [], yaw = [], pitch = [], roll = [];
+    for (const s of S) {
+      const e = quatToYXZ(s[1], s[2], s[3], s[4]);
+      t.push(s[0]); pitch.push(e[0]); yaw.push(e[1]); roll.push(e[2]);
+    }
+    unwrap(yaw); unwrap(roll);
+    motion = { t, yaw, pitch, roll };
+    $('motionName').textContent = `${file.name} · ${t[t.length - 1].toFixed(1)} с, ${S.length} точек`; $('dropMotion').classList.add('ok');
+    rebuild();
+  } catch (e) { $('motionName').textContent = 'Не получилось прочитать: ' + e.message; }
+}
+
+/* ---------- math ---------- */
+// Euler YXZ (three.js convention): camera looks -Z, yaw about Y (left +), pitch about X (up +), roll about Z (CCW +)
+function quatToYXZ(w, x, y, z) {
+  const m13 = 2 * (x * z + y * w), m33 = 1 - 2 * (x * x + y * y), m23 = 2 * (y * z - x * w);
+  const m21 = 2 * (x * y + z * w), m22 = 1 - 2 * (x * x + z * z), m31 = 2 * (x * z - y * w), m11 = 1 - 2 * (y * y + z * z);
+  const ex = Math.asin(Math.max(-1, Math.min(1, -m23)));
+  if (Math.abs(m23) < 0.9999999) return [ex, Math.atan2(m13, m33), Math.atan2(m21, m22)];
+  return [ex, Math.atan2(-m31, m11), 0];
+}
+function yxzToQuat(ex, ey, ez) {
+  const qy = [Math.cos(ey / 2), 0, Math.sin(ey / 2), 0], qx = [Math.cos(ex / 2), Math.sin(ex / 2), 0, 0], qz = [Math.cos(ez / 2), 0, 0, Math.sin(ez / 2)];
+  return qmul(qmul(qy, qx), qz);
+}
+function qmul(a, b) { return [
+  a[0]*b[0] - a[1]*b[1] - a[2]*b[2] - a[3]*b[3], a[0]*b[1] + a[1]*b[0] + a[2]*b[3] - a[3]*b[2],
+  a[0]*b[2] - a[1]*b[3] + a[2]*b[0] + a[3]*b[1], a[0]*b[3] + a[1]*b[2] - a[2]*b[1] + a[3]*b[0]]; }
+function unwrap(a) { for (let i = 1; i < a.length; i++) { let d = a[i] - a[i - 1]; while (d > Math.PI) { a[i] -= 2 * Math.PI; d -= 2 * Math.PI; } while (d < -Math.PI) { a[i] += 2 * Math.PI; d += 2 * Math.PI; } } }
+function sampleAt(arr, t, T) {
+  if (t <= T[0]) return arr[0]; const n = T.length; if (t >= T[n - 1]) return arr[n - 1];
+  let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (T[m] <= t) lo = m; else hi = m; }
+  const k = (t - T[lo]) / ((T[hi] - T[lo]) || 1); return arr[lo] + (arr[hi] - arr[lo]) * k;
+}
+function gauss(a, sigma) {
+  if (sigma < 0.3) return a.slice();
+  const r = Math.ceil(sigma * 3), w = []; let sum = 0;
+  for (let i = -r; i <= r; i++) { const v = Math.exp(-(i * i) / (2 * sigma * sigma)); w.push(v); sum += v; }
+  return a.map((_, i) => { let acc = 0; for (let j = -r; j <= r; j++) acc += a[Math.max(0, Math.min(a.length - 1, i + j))] * w[j + r]; return acc / sum; });
+}
+
+/* ---------- build per-frame track ---------- */
+const params = () => ({
+  strength: +$('strength').value, win: +$('window').value, smooth: +$('smooth').value, offset: +$('offset').value,
+  fov: +$('fov').value * Math.PI / 180, fps: +$('fps').value, roll: $('roll').checked, autoscale: $('autoscale').checked });
+
+function rebuild() {
+  const p = params();
+  $('vStrength').textContent = p.strength.toFixed(2) + '×'; $('vWindow').textContent = p.win.toFixed(2);
+  $('vSmooth').textContent = p.smooth; $('vOffset').textContent = (p.offset >= 0 ? '+' : '') + p.offset.toFixed(2);
+  $('vFov').textContent = Math.round(p.fov * 180 / Math.PI);
+  $('rowWindow').style.display = mode === 'shake' ? '' : 'none';
+  if (!motion) { track = null; updateButtons(); drawChart(); render(); return; }
+  const dur = vid.duration && isFinite(vid.duration) ? vid.duration : motion.t[motion.t.length - 1];
+  const n = Math.max(1, Math.round(dur * p.fps));
+  const get = arr => { const r = new Array(n); for (let i = 0; i < n; i++) r[i] = sampleAt(arr, i / p.fps + p.offset, motion.t); return r; };
+  let yaw = get(motion.yaw), pitch = get(motion.pitch), roll = get(motion.roll);
+  const proc = a => {
+    let x = gauss(a, p.smooth);
+    if (mode === 'shake') { const low = gauss(a, p.win * p.fps / 2); x = x.map((v, i) => v - low[i]); }
+    else { const a0 = x[0]; x = x.map(v => v - a0); }
+    return x.map(v => v * p.strength);
+  };
+  yaw = proc(yaw); pitch = proc(pitch); roll = p.roll ? proc(roll) : roll.map(() => 0);
+  const W = out.width || 1920, H = out.height || 1080, f = (W / 2) / Math.tan(p.fov / 2);
+  const dx = yaw.map(v => v * f), dy = pitch.map(v => v * f), rot = roll.map(v => v * 180 / Math.PI);
+  // smallest constant scale so the moved frame always covers the canvas
+  let s = 1;
+  if (p.autoscale) for (let i = 0; i < n; i++) {
+    const th = -rot[i] * Math.PI / 180, c = Math.cos(th), sn = Math.sin(th);
+    for (const [cx, cy] of [[-W/2, -H/2], [W/2, -H/2], [W/2, H/2], [-W/2, H/2]]) {
+      const x = cx - dx[i], y = cy - dy[i], qx = x * c - y * sn, qy = x * sn + y * c;
+      s = Math.max(s, 2 * Math.abs(qx) / W, 2 * Math.abs(qy) / H);
+    }
+  }
+  $('vScale').textContent = p.autoscale ? Math.round(s * 1000) / 10 + '%' : '';
+  track = { n, fps: p.fps, dx, dy, rot, s, yaw, pitch, roll, W, H };
+  updateButtons(); drawChart(); render();
+}
+
+/* ---------- render ---------- */
+function frameIndex() { return track ? Math.max(0, Math.min(track.n - 1, Math.round(vid.currentTime * track.fps))) : 0; }
+function render() {
+  if (!vid.videoWidth) return;
+  const W = out.width, H = out.height;
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  if (track) { const i = frameIndex(); ctx.translate(W / 2 + track.dx[i], H / 2 + track.dy[i]); ctx.rotate(track.rot[i] * Math.PI / 180); ctx.scale(track.s, track.s); ctx.translate(-W / 2, -H / 2); }
+  ctx.drawImage(vid, 0, 0, W, H);
+  ctx.restore();
+  const d = vid.duration || 0;
+  $('time').textContent = `${vid.currentTime.toFixed(2)} / ${d.toFixed(2)}`;
+  if (!seeking && d) $('seek').value = vid.currentTime / d * 1000;
+  drawPlayhead();
+}
+function loop() { render(); if (!vid.paused && !vid.ended) (vid.requestVideoFrameCallback ? vid.requestVideoFrameCallback(loop) : requestAnimationFrame(loop)); else $('play').textContent = '▶︎'; }
+
+let seeking = false;
+$('play').onclick = () => { if (vid.paused) { vid.play(); $('play').textContent = '❚❚'; loop(); } else { vid.pause(); $('play').textContent = '▶︎'; } };
+$('seek').oninput = () => { seeking = true; vid.currentTime = $('seek').value / 1000 * (vid.duration || 0); };
+$('seek').onchange = () => { seeking = false; };
+
+/* ---------- chart ---------- */
+let chartBase = null;
+function drawChart() {
+  const dpr = devicePixelRatio || 1, w = chart.clientWidth, h = chart.clientHeight;
+  chart.width = w * dpr; chart.height = h * dpr; cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cctx.clearRect(0, 0, w, h);
+  cctx.strokeStyle = '#2c2c34'; cctx.beginPath(); cctx.moveTo(0, h / 2); cctx.lineTo(w, h / 2); cctx.stroke();
+  if (!track) { chartBase = null; return; }
+  const all = [...track.yaw, ...track.pitch, ...track.roll].map(Math.abs); let mx = Math.max(...all, 1e-4) * 180 / Math.PI;
+  cctx.fillStyle = '#8d8d99'; cctx.font = '11px system-ui'; cctx.fillText('±' + mx.toFixed(2) + '°', 6, 13);
+  const plot = (arr, col) => { cctx.strokeStyle = col; cctx.lineWidth = 1.3; cctx.beginPath();
+    arr.forEach((v, i) => { const x = i / (track.n - 1 || 1) * w, y = h / 2 - (v * 180 / Math.PI) / mx * (h / 2 - 8); i ? cctx.lineTo(x, y) : cctx.moveTo(x, y); }); cctx.stroke(); };
+  plot(track.yaw, '#ff5b8a'); plot(track.pitch, '#4cc3ff'); plot(track.roll, '#ffd166');
+  chartBase = cctx.getImageData(0, 0, chart.width, chart.height);
+}
+function drawPlayhead() {
+  if (!chartBase || !track) return;
+  cctx.putImageData(chartBase, 0, 0);
+  const w = chart.clientWidth, x = frameIndex() / (track.n - 1 || 1) * w;
+  cctx.strokeStyle = '#fff'; cctx.lineWidth = 1; cctx.beginPath(); cctx.moveTo(x, 0); cctx.lineTo(x, chart.clientHeight); cctx.stroke();
+}
+addEventListener('resize', () => { drawChart(); drawPlayhead(); });
+
+/* ---------- controls ---------- */
+['strength', 'window', 'smooth', 'offset', 'fov', 'fps', 'roll', 'autoscale'].forEach(id => $(id).addEventListener('input', rebuild));
+$('modeShake').onclick = () => { mode = 'shake'; $('modeShake').classList.add('on'); $('modeFull').classList.remove('on'); $('modeHint').textContent = 'Оставляет живые мелкие движения руки, а крупные повороты убирает: камера игры уже двигается сама.'; rebuild(); };
+$('modeFull').onclick = () => { mode = 'full'; $('modeFull').classList.add('on'); $('modeShake').classList.remove('on'); $('modeHint').textContent = 'Переносит поворот телефона целиком. Для 2D-футажа обычно слишком сильно, удобно для камеры в Blender.'; rebuild(); };
+
+function updateButtons() {
+  const ready = !!track; $('play').disabled = $('seek').disabled = !vid.videoWidth;
+  $('dlAE').disabled = $('dlBlender').disabled = !ready;
+  $('dlVideo').disabled = !(ready && vid.videoWidth) || recording;
+}
+
+/* ---------- downloads ---------- */
+function save(name, text, type = 'text/plain') {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+$('dlAE').onclick = () => {
+  const t = track, W = t.W, H = t.H, L = [];
+  L.push('Adobe After Effects 8.0 Keyframe Data', '', `\tUnits Per Second\t${t.fps}`, `\tSource Width\t${W}`, `\tSource Height\t${H}`, '\tSource Pixel Aspect Ratio\t1', '\tComp Pixel Aspect Ratio\t1', '');
+  L.push('Transform\tPosition', '\tFrame\tX pixels\tY pixels\tZ pixels\t');
+  for (let i = 0; i < t.n; i++) L.push(`\t${i}\t${(W / 2 + t.dx[i]).toFixed(3)}\t${(H / 2 + t.dy[i]).toFixed(3)}\t0\t`);
+  L.push('', 'Transform\tRotation', '\tFrame\tdegrees\t');
+  for (let i = 0; i < t.n; i++) L.push(`\t${i}\t${t.rot[i].toFixed(4)}\t`);
+  L.push('', 'Transform\tScale', '\tFrame\tX percent\tY percent\tZ percent\t', `\t0\t${(t.s * 100).toFixed(3)}\t${(t.s * 100).toFixed(3)}\t100\t`);
+  L.push('', '', 'End of Keyframe Data', '');
+  save(`${videoName}_motion_AE.txt`, L.join('\r\n'));
+};
+$('dlBlender').onclick = () => {
+  const t = track, q = [];
+  for (let i = 0; i < t.n; i++) q.push(yxzToQuat(t.pitch[i], t.yaw[i], t.roll[i]).map(v => +v.toFixed(6)));
+  const py = `# Phone motion -> Blender camera. Run in the Scripting tab with your camera selected (or set as scene camera).
+# Keys start at the current frame. Rotation is added on top of the camera's current rotation.
+import bpy
+from mathutils import Quaternion
+
+FPS = ${t.fps}
+MOTION = ${JSON.stringify(q)}
+
+scene = bpy.context.scene
+cam = bpy.context.active_object if (bpy.context.active_object and bpy.context.active_object.type == 'CAMERA') else scene.camera
+if cam is None:
+    raise Exception('Select a camera first')
+if 'motion_base' not in cam:
+    cam['motion_base'] = list(cam.matrix_basis.to_quaternion())
+base = Quaternion(cam['motion_base'])
+cam.rotation_mode = 'QUATERNION'
+start = scene.frame_current
+for i, (w, x, y, z) in enumerate(MOTION):
+    cam.rotation_quaternion = base @ Quaternion((w, x, y, z))
+    cam.keyframe_insert('rotation_quaternion', frame=start + i)
+print('Phone motion: %d keys from frame %d (scene fps %s, motion fps %s)' % (len(MOTION), start, scene.render.fps, FPS))
+`;
+  save(`${videoName}_motion_blender.py`, py, 'text/x-python');
+};
+
+$('dlVideo').onclick = async () => {
+  const types = ['video/mp4;codecs=avc1.640033', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'];
+  const type = types.find(x => window.MediaRecorder && MediaRecorder.isTypeSupported(x));
+  if (!type) { $('status').textContent = 'Этот браузер не умеет записывать видео. Попробуй Chrome.'; return; }
+  recording = true; updateButtons();
+  vid.pause(); vid.currentTime = 0; await new Promise(r => vid.addEventListener('seeked', r, { once: true }));
+  const stream = out.captureStream(track.fps);
+  const mr = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 40e6 });
+  const chunks = []; mr.ondataavailable = e => e.data.size && chunks.push(e.data);
+  const done = new Promise(r => mr.onstop = r);
+  mr.start(250);
+  const step = () => { render(); $('status').textContent = `Записываю… ${Math.round(vid.currentTime / vid.duration * 100)}%`; if (!vid.ended) (vid.requestVideoFrameCallback ? vid.requestVideoFrameCallback(step) : requestAnimationFrame(step)); };
+  vid.play(); step();
+  await new Promise(r => vid.addEventListener('ended', r, { once: true }));
+  render(); mr.stop(); await done;
+  const ext = type.includes('mp4') ? 'mp4' : 'webm';
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(chunks, { type: type.split(';')[0] })); a.download = `${videoName}_motion.${ext}`; a.click();
+  $('status').textContent = `Готово: ${videoName}_motion.${ext}`;
+  recording = false; updateButtons(); $('play').textContent = '▶︎';
+};
+
+rebuild();
+</script>
+</body>
+</html>
