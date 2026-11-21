@@ -7,15 +7,15 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Phone">
-<meta name="theme-color" content="#000000">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="assets/touch-icon.png">
 <title>Phone</title>
 <style>
   :root { --s: 1; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; overscroll-behavior: none; }
-  body { position: fixed; inset: 0; font-family: -apple-system, "SF Pro Text", "SF Pro", system-ui, sans-serif; color: #fff; touch-action: none; }
+  /* iOS home-screen apps report 100% height minus the status bar: size by the large viewport and paint the wallpaper on html as a fallback */
+  html { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: #6a5a9a url(assets/wallpaper.jpg) center / cover no-repeat; }
+  body { margin: 0; position: fixed; left: 0; top: 0; width: 100%; height: 100vh; height: 100lvh; overflow: hidden; overscroll-behavior: none; font-family: -apple-system, "SF Pro Text", "SF Pro", system-ui, sans-serif; color: #fff; touch-action: none; }
 
   /* ---------- Home screen ---------- */
   #home { position: absolute; inset: 0; overflow: hidden; background: linear-gradient(180deg, #c7c2d6 0%, #d8ddda 45%, #cfddd6 100%); }
@@ -23,15 +23,11 @@
   /* 402pt design canvas scaled to device width */
   #stage { position: absolute; left: 0; top: 0; width: 402px; height: 874px; transform-origin: 0 0; transform: scale(var(--s)); }
 
-  .statusbar { position: absolute; left: 0; top: 0; width: 402px; height: 62px; }
-  .statusbar .time { position: absolute; left: 0; width: 138.5px; top: 3px; height: 59px; display: flex; align-items: center; justify-content: center; padding-left: 10px; font-weight: 590; font-size: 17.67px; line-height: 22px; }
-  .weather { position: absolute; left: 311px; top: 23px; height: 20px; display: flex; align-items: center; gap: 5px; font-weight: 590; font-size: 17px; }
-  .weather img { width: 11px; height: 11px; display: block; }
-  body.nostatus .statusbar, body.nostatus .weather { display: none; }
 
   .widget { position: absolute; left: 26px; top: 76px; width: 349.67px; height: 164.33px; border-radius: 28px; overflow: hidden; }
-  .widget .bg { position: absolute; inset: 0; border-radius: 28px; background: rgba(31,31,38,.5); -webkit-backdrop-filter: blur(15px); backdrop-filter: blur(15px); }
-  .widget .rim { position: absolute; inset: 0; border-radius: 28px; box-shadow: inset 0 20px 10px -20px #222, inset 0 -20px 10px -20px #222, inset 0 1px 0 0 #1a1a1a, inset 0 -1px 0 0 #1a1a1a, inset 0 4px .5px -4px #666, inset 0 -4px .5px -4px #666; }
+  .widget .blur { position: absolute; inset: -40px; background-image: url(assets/wallpaper.jpg); background-repeat: no-repeat; filter: blur(15px); -webkit-filter: blur(15px); transform: translateZ(0); }
+  .widget .bg { position: absolute; inset: 0; border-radius: 28px; background: rgba(31,31,38,.5); }
+  .widget .rim { position: absolute; inset: 0; border-radius: 28px; box-shadow: inset 0 1px 0 rgba(255,255,255,.22), inset 0 -1px 0 rgba(255,255,255,.12), inset 0 0 0 .5px rgba(255,255,255,.10), inset 0 12px 14px -12px rgba(255,255,255,.08); }
   .widget-content { position: absolute; left: 44px; top: 94px; width: 314px; height: 128px; display: flex; flex-direction: column; justify-content: space-between; }
   .widget-content .hdr { display: flex; align-items: center; gap: 8px; font-weight: 590; font-size: 17px; }
   .widget-content .hdr span.ic { width: 26px; height: 26px; position: relative; }
@@ -53,7 +49,7 @@
   .cam-top { position: absolute; left: 0; right: 0; top: 0; height: calc(env(safe-area-inset-top) + 56px); background: linear-gradient(rgba(0,0,0,.55), rgba(0,0,0,0)); pointer-events: none; }
   .cam-close { position: absolute; left: 16px; top: calc(env(safe-area-inset-top) + 10px); width: 36px; height: 36px; border-radius: 50%; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; }
   .cam-close svg { width: 16px; height: 16px; }
-  .cam-bottom { position: absolute; left: 0; right: 0; bottom: 0; padding-bottom: calc(env(safe-area-inset-bottom) + 18px); padding-top: 14px; background: rgba(0,0,0,.45); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+  .cam-bottom { position: absolute; left: 0; right: 0; bottom: 0; padding-bottom: calc(env(safe-area-inset-bottom) + 18px); padding-top: 14px; background: rgba(0,0,0,.5); }
   .zoom { display: flex; justify-content: center; gap: 10px; margin-bottom: 16px; }
   .zoom button { width: 38px; height: 38px; border-radius: 50%; border: 0; background: rgba(0,0,0,.45); color: #fff; font: 600 12px -apple-system, system-ui, sans-serif; }
   .zoom button.on { color: #ffd60a; font-size: 13px; }
@@ -71,10 +67,8 @@
 <div id="home">
   <div class="wall"></div>
   <div id="stage">
-    <div class="statusbar"><div class="time">2:47</div></div>
-    <div class="weather"><img src="assets/sun.png" alt=""><span>81°</span></div>
 
-    <div class="widget"><div class="bg"></div><div class="rim"></div></div>
+    <div class="widget"><div class="blur" id="wblur"></div><div class="bg"></div><div class="rim"></div></div>
     <div class="widget-content">
       <div class="hdr"><span class="ic"><img src="assets/reminders.png" alt=""></span>Reminders</div>
       <div class="count">7 Notifications</div>
@@ -117,13 +111,21 @@ APPS.forEach(([id, name, badge], i) => {
   grid.appendChild(el);
 });
 
+const WALL = { w: 1239, h: 2682 };
 function fit() {
-  document.documentElement.style.setProperty('--s', window.innerWidth / 402);
+  const s = document.body.clientWidth / 402;
+  document.documentElement.style.setProperty('--s', s);
+  // widget glass: place a blurred copy of the wallpaper exactly under the widget (no backdrop-filter, iOS renders it black)
+  const vw = document.body.clientWidth, vh = document.body.clientHeight, k = Math.max(vw / WALL.w, vh / WALL.h);
+  const bw = WALL.w * k, bh = WALL.h * k, bx = (vw - bw) / 2, by = (vh - bh) / 2;
+  const b = document.getElementById('wblur');
+  // .blur lives in stage coords (scaled by s) and is inset -40px from widget at left 26 / top 76
+  const ox = 26 - 40, oy = 76 - 40;
+  b.style.backgroundSize = `${bw / s}px ${bh / s}px`;
+  b.style.backgroundPosition = `${bx / s - ox}px ${by / s - oy}px`;
 }
 fit(); addEventListener('resize', fit);
 
-// ?statusbar=0 hides the drawn time/weather (the real iOS status bar is always on top in a home-screen web app)
-if (new URLSearchParams(location.search).get('statusbar') === '0') document.body.classList.add('nostatus');
 
 grid.addEventListener('pointerdown', e => { const a = e.target.closest('.app'); if (a) a.classList.add('pressed'); });
 addEventListener('pointerup', () => document.querySelectorAll('.app.pressed').forEach(a => a.classList.remove('pressed')));
@@ -297,7 +299,7 @@ function initGL() {
 
 function draw() {
   const dpr = Math.min(devicePixelRatio || 1, 3);
-  const w = Math.round(innerWidth * dpr), h = Math.round(innerHeight * dpr);
+  const w = Math.round(cam.clientWidth * dpr), h = Math.round(cam.clientHeight * dpr);
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   gl.viewport(0, 0, w, h);
   zoom += (zoomTarget - zoom) * 0.25;
