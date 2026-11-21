@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Phone">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="assets/touch-icon.png">
+<title>Phone</title>
+<style>
+  :root { --s: 1; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; overscroll-behavior: none; }
+  body { position: fixed; inset: 0; font-family: -apple-system, "SF Pro Text", "SF Pro", system-ui, sans-serif; color: #fff; touch-action: none; }
+
+  /* ---------- Home screen ---------- */
+  #home { position: absolute; inset: 0; overflow: hidden; background: linear-gradient(180deg, #c7c2d6 0%, #d8ddda 45%, #cfddd6 100%); }
+  #home .wall { position: absolute; inset: 0; background: url(assets/wallpaper.jpg) center / cover no-repeat; }
+  /* 402pt design canvas scaled to device width */
+  #stage { position: absolute; left: 0; top: 0; width: 402px; height: 874px; transform-origin: 0 0; transform: scale(var(--s)); }
+
+  .statusbar { position: absolute; left: 0; top: 0; width: 402px; height: 62px; }
+  .statusbar .time { position: absolute; left: 0; width: 138.5px; top: 3px; height: 59px; display: flex; align-items: center; justify-content: center; padding-left: 10px; font-weight: 590; font-size: 17.67px; line-height: 22px; }
+  .weather { position: absolute; left: 311px; top: 23px; height: 20px; display: flex; align-items: center; gap: 5px; font-weight: 590; font-size: 17px; }
+  .weather img { width: 11px; height: 11px; display: block; }
+  body.nostatus .statusbar, body.nostatus .weather { display: none; }
+
+  .widget { position: absolute; left: 26px; top: 76px; width: 349.67px; height: 164.33px; border-radius: 28px; overflow: hidden; }
+  .widget .bg { position: absolute; inset: 0; border-radius: 28px; background: rgba(31,31,38,.5); -webkit-backdrop-filter: blur(15px); backdrop-filter: blur(15px); }
+  .widget .rim { position: absolute; inset: 0; border-radius: 28px; box-shadow: inset 0 20px 10px -20px #222, inset 0 -20px 10px -20px #222, inset 0 1px 0 0 #1a1a1a, inset 0 -1px 0 0 #1a1a1a, inset 0 4px .5px -4px #666, inset 0 -4px .5px -4px #666; }
+  .widget-content { position: absolute; left: 44px; top: 94px; width: 314px; height: 128px; display: flex; flex-direction: column; justify-content: space-between; }
+  .widget-content .hdr { display: flex; align-items: center; gap: 8px; font-weight: 590; font-size: 17px; }
+  .widget-content .hdr span.ic { width: 26px; height: 26px; position: relative; }
+  .widget-content .hdr span.ic img { position: absolute; left: -10px; top: -10px; width: 46px; height: 46px; }
+  .widget-content .count { font-size: 20px; font-weight: 400; }
+
+  .grid { position: absolute; left: 26px; top: 268px; width: 350px; }
+  .app { position: absolute; width: 64px; height: 83px; }
+  .app .art { position: absolute; left: -18px; top: -18px; width: 100px; height: 100px; pointer-events: none; }
+  .app .hit { position: absolute; left: 0; top: 0; width: 64px; height: 64px; border-radius: 50%; }
+  .app .label { position: absolute; left: -9px; top: 69px; width: 82px; height: 14px; text-align: center; font-size: 12px; font-weight: 510; line-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 .5px 3px rgba(0,0,0,.35); }
+  .app .badge { position: absolute; left: 45px; top: -7px; min-width: 24px; padding: 2.5px 7px; border-radius: 100px; background: #ff4245; font-size: 16px; line-height: 19px; text-align: center; }
+  .app.pressed .art { filter: brightness(.75); }
+
+  /* ---------- Camera ---------- */
+  #camera { position: absolute; inset: 0; background: #000; display: none; overflow: hidden; border-radius: 0; }
+  #camera.open { display: block; }
+  #view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  .cam-top { position: absolute; left: 0; right: 0; top: 0; height: calc(env(safe-area-inset-top) + 56px); background: linear-gradient(rgba(0,0,0,.55), rgba(0,0,0,0)); pointer-events: none; }
+  .cam-close { position: absolute; left: 16px; top: calc(env(safe-area-inset-top) + 10px); width: 36px; height: 36px; border-radius: 50%; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; }
+  .cam-close svg { width: 16px; height: 16px; }
+  .cam-bottom { position: absolute; left: 0; right: 0; bottom: 0; padding-bottom: calc(env(safe-area-inset-bottom) + 18px); padding-top: 14px; background: rgba(0,0,0,.45); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+  .zoom { display: flex; justify-content: center; gap: 10px; margin-bottom: 16px; }
+  .zoom button { width: 38px; height: 38px; border-radius: 50%; border: 0; background: rgba(0,0,0,.45); color: #fff; font: 600 12px -apple-system, system-ui, sans-serif; }
+  .zoom button.on { color: #ffd60a; font-size: 13px; }
+  .controls { display: flex; align-items: center; justify-content: space-between; padding: 0 34px; }
+  .thumb { width: 48px; height: 48px; border-radius: 8px; background: #222 center / cover no-repeat; border: 1px solid rgba(255,255,255,.2); }
+  .shutter { width: 76px; height: 76px; border-radius: 50%; border: 4px solid #fff; padding: 4px; background: transparent; }
+  .shutter i { display: block; width: 100%; height: 100%; border-radius: 50%; background: #fff; transition: transform .12s; }
+  .shutter.down i { transform: scale(.88); }
+  .spacer { width: 48px; }
+  #flash { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity .25s; }
+  #flash.on { opacity: 1; transition: none; }
+</style>
+</head>
+<body>
+<div id="home">
+  <div class="wall"></div>
+  <div id="stage">
+    <div class="statusbar"><div class="time">2:47</div></div>
+    <div class="weather"><img src="assets/sun.png" alt=""><span>81°</span></div>
+
+    <div class="widget"><div class="bg"></div><div class="rim"></div></div>
+    <div class="widget-content">
+      <div class="hdr"><span class="ic"><img src="assets/reminders.png" alt=""></span>Reminders</div>
+      <div class="count">7 Notifications</div>
+    </div>
+
+    <div class="grid" id="grid"></div>
+  </div>
+</div>
+
+<div id="camera">
+  <canvas id="view"></canvas>
+  <div class="cam-top"></div>
+  <div class="cam-close" id="close"><svg viewBox="0 0 16 16"><path d="M3 3l10 10M13 3L3 13" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></div>
+  <div class="cam-bottom">
+    <div class="zoom"><button data-z="1" class="on">1×</button><button data-z="2">2</button></div>
+    <div class="controls">
+      <div class="thumb" id="thumb"></div>
+      <button class="shutter" id="shutter"><i></i></button>
+      <div class="spacer"></div>
+    </div>
+  </div>
+  <div id="flash"></div>
+</div>
+
+<script>
+/* ================= Home screen ================= */
+const APPS = [
+  ['messages','Messages',3], ['phone','Phone'], ['camera','Camera'], ['feed','Feed',2],
+  ['photos','Photos'], ['dating','Dating',1], ['news','News'], ['weather','Weather'],
+  ['gallery','Gallery'], ['settings','Settings'],
+];
+const COL_X = [0, 95.333, 190.667, 286], ROW_Y = [0, 105, 210];
+const grid = document.getElementById('grid');
+APPS.forEach(([id, name, badge], i) => {
+  const el = document.createElement('div');
+  el.className = 'app'; el.dataset.app = id;
+  el.style.left = COL_X[i % 4] + 'px'; el.style.top = ROW_Y[Math.floor(i / 4)] + 'px';
+  el.innerHTML = `<img class="art" src="assets/${id}.png" alt=""><div class="hit"></div><div class="label">${name}</div>` +
+    (badge ? `<div class="badge">${badge}</div>` : '');
+  grid.appendChild(el);
+});
+
+function fit() {
+  document.documentElement.style.setProperty('--s', window.innerWidth / 402);
+}
+fit(); addEventListener('resize', fit);
+
+// ?statusbar=0 hides the drawn time/weather (the real iOS status bar is always on top in a home-screen web app)
+if (new URLSearchParams(location.search).get('statusbar') === '0') document.body.classList.add('nostatus');
+
+grid.addEventListener('pointerdown', e => { const a = e.target.closest('.app'); if (a) a.classList.add('pressed'); });
+addEventListener('pointerup', () => document.querySelectorAll('.app.pressed').forEach(a => a.classList.remove('pressed')));
+addEventListener('pointercancel', () => document.querySelectorAll('.app.pressed').forEach(a => a.classList.remove('pressed')));
+
+grid.addEventListener('click', e => {
+  const a = e.target.closest('.app');
+  if (a && a.dataset.app === 'camera') openCamera(a);
+});
+
+/* ================= Camera ================= */
+const cam = document.getElementById('camera');
+const canvas = document.getElementById('view');
+let gl, prog, loc = {}, texReady = false, running = false;
+
+// Panorama mapping (spherical stitch): pixels per radian and horizon row
+const PANO = { src: 'assets/panorama.jpg', W: 2340, H: 1532, f: 1136, cx: 1170, cy: 760 };
+const BASE_VFOV = 56 * Math.PI / 180;   // 1× vertical field of view
+
+let zoom = 1, zoomTarget = 1;
+let touchYaw = 0, touchPitch = 0;
+let q0 = null, qTarget = [1,0,0,0], qCur = [1,0,0,0], hasGyro = false;
+
+async function askMotion() {
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const r = await DeviceOrientationEvent.requestPermission();
+      return r === 'granted';
+    }
+    return true;
+  } catch (e) { return false; }
+}
+
+function openCamera(iconEl) {
+  // must be inside the tap handler for iOS permission prompt
+  askMotion().then(ok => { if (ok) startGyro(); });
+  const r = iconEl.querySelector('.hit').getBoundingClientRect();
+  cam.classList.add('open');
+  initGL();
+  q0 = null; touchYaw = 0; touchPitch = 0;
+  const ox = r.left + r.width / 2, oy = r.top + r.height / 2;
+  cam.animate([
+    { transformOrigin: `${ox}px ${oy}px`, transform: `scale(${r.width / innerWidth})`, borderRadius: `${innerWidth}px`, opacity: .2 },
+    { transformOrigin: `${ox}px ${oy}px`, transform: 'scale(1)', borderRadius: '0px', opacity: 1 }
+  ], { duration: 380, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  running = true; requestAnimationFrame(frame);
+}
+
+document.getElementById('close').addEventListener('click', () => {
+  const a = cam.animate([{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.2)', opacity: 0 }], { duration: 260, easing: 'ease-in' });
+  a.onfinish = () => { cam.classList.remove('open'); running = false; };
+});
+
+/* ---- gyro ---- */
+function eulerToQuat(alpha, beta, gamma) {
+  const d = Math.PI / 180, x = beta * d / 2, y = gamma * d / 2, z = alpha * d / 2;
+  const cX = Math.cos(x), cY = Math.cos(y), cZ = Math.cos(z), sX = Math.sin(x), sY = Math.sin(y), sZ = Math.sin(z);
+  return [cX*cY*cZ - sX*sY*sZ, sX*cY*cZ - cX*sY*sZ, cX*sY*cZ + sX*cY*sZ, cX*cY*sZ + sX*sY*cZ];
+}
+const qMul = (a, b) => [
+  a[0]*b[0] - a[1]*b[1] - a[2]*b[2] - a[3]*b[3],
+  a[0]*b[1] + a[1]*b[0] + a[2]*b[3] - a[3]*b[2],
+  a[0]*b[2] - a[1]*b[3] + a[2]*b[0] + a[3]*b[1],
+  a[0]*b[3] + a[1]*b[2] - a[2]*b[1] + a[3]*b[0]];
+const qConj = a => [a[0], -a[1], -a[2], -a[3]];
+function qSlerp(a, b, t) {
+  let d = a[0]*b[0] + a[1]*b[1] + a[2]*b[2] + a[3]*b[3];
+  if (d < 0) { b = b.map(v => -v); d = -d; }
+  if (d > 0.9995) { const r = a.map((v, i) => v + (b[i] - v) * t); const n = Math.hypot(...r); return r.map(v => v / n); }
+  const th = Math.acos(d), s = Math.sin(th), wa = Math.sin((1 - t) * th) / s, wb = Math.sin(t * th) / s;
+  return a.map((v, i) => v * wa + b[i] * wb);
+}
+function quatToMat3(q) {
+  const [w, x, y, z] = q;
+  // column-major for WebGL
+  return new Float32Array([
+    1 - 2*(y*y + z*z), 2*(x*y + z*w),     2*(x*z - y*w),
+    2*(x*y - z*w),     1 - 2*(x*x + z*z), 2*(y*z + x*w),
+    2*(x*z + y*w),     2*(y*z - x*w),     1 - 2*(x*x + y*y)]);
+}
+let gyroStarted = false;
+function startGyro() {
+  if (gyroStarted) return; gyroStarted = true;
+  addEventListener('deviceorientation', e => {
+    if (e.alpha == null) return;
+    hasGyro = true;
+    const q = eulerToQuat(e.alpha, e.beta, e.gamma);
+    if (!q0) { q0 = q; qCur = [1,0,0,0]; }
+    qTarget = qMul(qConj(q0), q);
+  });
+}
+
+/* ---- touch: drag to look, pinch to zoom ---- */
+const pts = new Map(); let pinch0 = 0, zoom0 = 1;
+canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch0 = Math.hypot(a[0]-b[0], a[1]-b[1]); zoom0 = zoomTarget; } });
+canvas.addEventListener('pointermove', e => {
+  if (!pts.has(e.pointerId)) return;
+  const prev = pts.get(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pts.size === 1) {
+    const radPerPx = 2 * Math.tan(BASE_VFOV / 2 / zoom) / innerHeight;
+    touchYaw   -= (e.clientX - prev[0]) * radPerPx;
+    touchPitch += (e.clientY - prev[1]) * radPerPx;
+    touchPitch = Math.max(-0.6, Math.min(0.6, touchPitch));
+    touchYaw = Math.max(-1.2, Math.min(1.2, touchYaw));
+  } else if (pts.size === 2) {
+    const [a, b] = [...pts.values()]; const d = Math.hypot(a[0]-b[0], a[1]-b[1]);
+    setZoom(zoom0 * d / pinch0);
+  }
+});
+const endPt = e => pts.delete(e.pointerId);
+canvas.addEventListener('pointerup', endPt); canvas.addEventListener('pointercancel', endPt);
+
+const zbtns = document.querySelectorAll('.zoom button');
+function setZoom(z) {
+  zoomTarget = Math.max(1, Math.min(5, z));
+  zbtns.forEach(b => b.classList.remove('on'));
+  const on = zoomTarget >= 1.95 ? zbtns[1] : zbtns[0];
+  on.classList.add('on');
+  zbtns[0].textContent = zoomTarget < 1.95 ? (zoomTarget.toFixed(1).replace('.0','') + '×') : '1';
+  zbtns[1].textContent = zoomTarget >= 1.95 ? (zoomTarget.toFixed(1).replace('.0','') + '×') : '2';
+}
+zbtns.forEach(b => b.addEventListener('click', () => setZoom(+b.dataset.z)));
+
+/* ---- shutter ---- */
+const shutter = document.getElementById('shutter'), flash = document.getElementById('flash'), thumb = document.getElementById('thumb');
+shutter.addEventListener('pointerdown', () => shutter.classList.add('down'));
+shutter.addEventListener('pointerup', () => shutter.classList.remove('down'));
+shutter.addEventListener('click', () => {
+  draw();
+  try { thumb.style.backgroundImage = `url(${canvas.toDataURL('image/jpeg', .7)})`; } catch (e) {}
+  flash.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => flash.classList.remove('on')));
+});
+
+/* ---- WebGL panorama ---- */
+function initGL() {
+  if (gl) return;
+  gl = canvas.getContext('webgl', { preserveDrawingBuffer: true, antialias: false });
+  const vs = `attribute vec2 p; varying vec2 v; void main(){ v=p; gl_Position=vec4(p,0.,1.); }`;
+  const fs = `precision highp float; varying vec2 v;
+    uniform sampler2D tex; uniform mat3 R; uniform vec2 tanH; uniform vec4 pano; uniform vec2 cxy;
+    void main(){
+      vec3 d = R * normalize(vec3(v.x*tanH.x, v.y*tanH.y, -1.0));
+      float yaw = atan(d.x, -d.z);
+      float pitch = atan(d.y, length(d.xz));
+      vec2 uv = vec2((cxy.x + yaw*pano.z)/pano.x, (cxy.y - pitch*pano.z)/pano.y);
+      vec3 c = texture2D(tex, clamp(uv, 0.0, 1.0)).rgb;
+      vec2 o = max(vec2(0.0), max(-uv, uv - 1.0));
+      c *= 1.0 - smoothstep(0.0, 0.25, length(o));
+      gl_FragColor = vec4(c, 1.0);
+    }`;
+  const sh = (t, s) => { const x = gl.createShader(t); gl.shaderSource(x, s); gl.compileShader(x); return x; };
+  prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(prog); gl.useProgram(prog);
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+  const pl = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(pl); gl.vertexAttribPointer(pl, 2, gl.FLOAT, false, 0, 0);
+  ['R','tanH','pano','cxy','tex'].forEach(n => loc[n] = gl.getUniformLocation(prog, n));
+  const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 1, 1, 0, gl.RGB, gl.UNSIGNED_BYTE, new Uint8Array([0,0,0]));
+  const img = new Image();
+  img.onload = () => { gl.bindTexture(gl.TEXTURE_2D, tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, img); texReady = true; };
+  img.src = PANO.src;
+  gl.uniform1i(loc.tex, 0);
+  gl.uniform4f(loc.pano, PANO.W, PANO.H, PANO.f, 0);
+  gl.uniform2f(loc.cxy, PANO.cx, PANO.cy);
+}
+
+function draw() {
+  const dpr = Math.min(devicePixelRatio || 1, 3);
+  const w = Math.round(innerWidth * dpr), h = Math.round(innerHeight * dpr);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  gl.viewport(0, 0, w, h);
+  zoom += (zoomTarget - zoom) * 0.25;
+  qCur = qSlerp(qCur, qTarget, 0.35);
+  // touch offsets: yaw around start-frame Y, pitch around start-frame X
+  const cy = Math.cos(touchYaw / 2), sy = Math.sin(touchYaw / 2), cp = Math.cos(touchPitch / 2), sp = Math.sin(touchPitch / 2);
+  const qTouch = qMul([cy, 0, -sy, 0], [cp, sp, 0, 0]);
+  const q = qMul(qTouch, hasGyro ? qCur : [1,0,0,0]);
+  gl.uniformMatrix3fv(loc.R, false, quatToMat3(q));
+  const tY = Math.tan(BASE_VFOV / 2 / zoom);
+  gl.uniform2f(loc.tanH, tY * w / h, tY);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+function frame() {
+  if (!running) return;
+  draw();
+  requestAnimationFrame(frame);
+}
+</script>
+</body>
+</html>

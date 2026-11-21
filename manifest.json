@@ -1,0 +1,1 @@
+{ "name": "Phone", "short_name": "Phone", "start_url": "./", "display": "standalone", "background_color": "#000000", "theme_color": "#000000", "icons": [{ "src": "assets/touch-icon.png", "sizes": "180x180", "type": "image/png" }] }
