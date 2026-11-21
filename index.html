@@ -36,11 +36,12 @@
   .widget-content .count { font-size: 20px; font-weight: 400; }
 
   .grid { position: absolute; left: 26px; top: 268px; width: 350px; }
-  .app { position: absolute; width: 64px; height: 83px; }
-  .app .art { position: absolute; left: -18px; top: -18px; width: 100px; height: 100px; pointer-events: none; }
-  .app .hit { position: absolute; left: 0; top: 0; width: 64px; height: 64px; border-radius: 50%; }
-  .app .label { position: absolute; left: -9px; top: 69px; width: 82px; height: 14px; text-align: center; font-size: 12px; font-weight: 510; line-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 .5px 3px rgba(0,0,0,.35); }
-  .app .badge { position: absolute; left: 45px; top: -7px; min-width: 24px; padding: 2.5px 7px; border-radius: 100px; background: #ff4245; font-size: 16px; line-height: 19px; text-align: center; }
+  /* icons ~10% larger than the 64pt in the Figma file */
+  .app { position: absolute; width: 70px; height: 89px; }
+  .app .art { position: absolute; left: -19.69px; top: -19.69px; width: 109.38px; height: 109.38px; pointer-events: none; }
+  .app .hit { position: absolute; left: 0; top: 0; width: 70px; height: 70px; border-radius: 50%; }
+  .app .label { position: absolute; left: -6px; top: 75px; width: 82px; height: 14px; text-align: center; font-size: 12px; font-weight: 510; line-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 .5px 3px rgba(0,0,0,.35); }
+  .app .badge { position: absolute; left: 50px; top: -7px; min-width: 24px; padding: 2.5px 7px; border-radius: 100px; background: #ff4245; font-size: 16px; line-height: 19px; text-align: center; }
   .app.pressed .art { filter: brightness(.75); }
 
   /* ---------- Camera ---------- */
@@ -100,7 +101,7 @@ const APPS = [
   ['photos','Photos'], ['dating','Dating',1], ['news','News'], ['weather','Weather'],
   ['gallery','Gallery'], ['settings','Settings'],
 ];
-const COL_X = [0, 95.333, 190.667, 286], ROW_Y = [0, 105, 210];
+const COL_X = [0, 93.333, 186.667, 280], ROW_Y = [0, 111, 222];
 const grid = document.getElementById('grid');
 APPS.forEach(([id, name, badge], i) => {
   const el = document.createElement('div');
