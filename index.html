@@ -13,11 +13,11 @@
 <style>
   :root { --s: 1; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-  /* iOS home-screen apps lay out the page shorter than the screen (minus the status bar).
-     The page keeps that size so touches line up; the wallpaper is painted on html, which iOS extends over the whole screen. */
+  /* iOS home-screen app with a translucent status bar: 100% is short by the status bar height, 100vh is the full screen.
+     body is not position:fixed — fixed elements get misaligned touches in that mode. */
   html { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: #6a5a9a url(assets/wallpaper.jpg) center / cover no-repeat; }
   html.cam { background: #000; }
-  body { margin: 0; position: fixed; inset: 0; overflow: hidden; overscroll-behavior: none; font-family: -apple-system, "SF Pro Text", "SF Pro", system-ui, sans-serif; color: #fff; touch-action: none; }
+  body { margin: 0; position: relative; width: 100%; height: 100vh; overflow: hidden; overscroll-behavior: none; font-family: -apple-system, "SF Pro Text", "SF Pro", system-ui, sans-serif; color: #fff; touch-action: none; }
 
   /* ---------- Home screen ---------- */
   #home { position: absolute; inset: 0; overflow: hidden; }
@@ -50,7 +50,7 @@
   .cam-top { position: absolute; left: 0; right: 0; top: 0; height: calc(env(safe-area-inset-top) + 56px); background: linear-gradient(rgba(0,0,0,.55), rgba(0,0,0,0)); pointer-events: none; }
   .cam-close { position: absolute; left: 16px; top: calc(env(safe-area-inset-top) + 10px); width: 36px; height: 36px; border-radius: 50%; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; }
   .cam-close svg { width: 16px; height: 16px; }
-  .cam-bottom { position: absolute; left: 0; right: 0; bottom: 0; padding-bottom: calc(max(0px, env(safe-area-inset-bottom) - var(--gap, 0px)) + 18px); padding-top: 14px; background: rgba(0,0,0,.5); }
+  .cam-bottom { position: absolute; left: 0; right: 0; bottom: 0; padding-bottom: calc(env(safe-area-inset-bottom) + 18px); padding-top: 14px; background: rgba(0,0,0,.5); }
   .zoom { display: flex; justify-content: center; gap: 10px; margin-bottom: 16px; }
   .zoom button { width: 38px; height: 38px; border-radius: 50%; border: 0; background: rgba(0,0,0,.45); color: #fff; font: 600 12px -apple-system, system-ui, sans-serif; }
   .zoom button.on { color: #ffd60a; font-size: 13px; }
@@ -115,9 +115,6 @@ const WALL = { w: 1239, h: 2682 };
 function fit() {
   const s = document.body.clientWidth / 402;
   document.documentElement.style.setProperty('--s', s);
-  // space iOS leaves below the page (home-screen app quirk); the home indicator already sits there
-  const gap = Math.max(0, Math.max(screen.width, screen.height) - document.body.clientHeight);
-  document.documentElement.style.setProperty('--gap', (innerHeight > innerWidth ? gap : 0) + 'px');
   // widget glass: place a blurred copy of the wallpaper exactly under the widget (no backdrop-filter, iOS renders it black)
   const vw = document.body.clientWidth, vh = document.body.clientHeight, k = Math.max(vw / WALL.w, vh / WALL.h);
   const bw = WALL.w * k, bh = WALL.h * k, bx = (vw - bw) / 2, by = (vh - bh) / 2;
@@ -321,6 +318,20 @@ function frame() {
   if (!running) return;
   draw();
   requestAnimationFrame(frame);
+}
+</script>
+<div id="dbg" style="display:none;position:absolute;left:8px;bottom:120px;z-index:99;font:11px/1.3 ui-monospace,monospace;background:rgba(0,0,0,.7);padding:6px 8px;border-radius:6px;pointer-events:none;white-space:pre"></div>
+<script>
+if (new URLSearchParams(location.search).get('debug') === '1') {
+  const d = document.getElementById('dbg'); d.style.display = 'block';
+  const sa = document.createElement('div'); sa.style.cssText = 'position:absolute;top:env(safe-area-inset-top);bottom:env(safe-area-inset-bottom);visibility:hidden';
+  document.body.appendChild(sa);
+  const upd = (t) => { const r = sa.getBoundingClientRect();
+    d.textContent = `inner ${innerWidth}x${innerHeight}\nscreen ${screen.width}x${screen.height}\nbody ${document.body.clientWidth}x${document.body.clientHeight}\nhtml ${document.documentElement.clientHeight}\nsafe top ${r.top} bottom ${document.body.clientHeight - r.bottom}\nstandalone ${navigator.standalone}` + (t ? `\ntouch ${Math.round(t[0])},${Math.round(t[1])}` : ''); };
+  upd(); addEventListener('resize', () => upd());
+  addEventListener('pointerdown', e => { upd([e.clientX, e.clientY]);
+    const m = document.createElement('div'); m.style.cssText = `position:absolute;z-index:98;left:${e.clientX - 6}px;top:${e.clientY - 6}px;width:12px;height:12px;border-radius:50%;background:#0f0;pointer-events:none`;
+    document.body.appendChild(m); setTimeout(() => m.remove(), 1500); });
 }
 </script>
 </body>
