@@ -107,14 +107,16 @@ function pollPad() {
 }
 
 /* ---------- phone link (WebRTC via PeerJS) ---------- */
-let peer = null, phoneQ = [1, 0, 0, 0], lastMsg = 0, peerState = 'connecting';
+let peer = null, phoneQ = [1, 0, 0, 0], lastMsg = 0, lastPing = 0, peerState = 'подключение к серверу';
 const phoneLive = () => performance.now() - lastMsg < 1500;
+const phoneLinked = () => performance.now() - lastPing < 3000;
 function startPeer() {
   if (typeof Peer === 'undefined') { peerState = 'PeerJS не загрузился'; return; }
   peer = new Peer(MONITOR_ID, { debug: 0 });
   peer.on('open', () => { peerState = 'ждёт телефон'; });
   peer.on('connection', conn => {
-    conn.on('data', d => { if (d && d.q) { phoneQ = d.q; lastMsg = performance.now(); } });
+    conn.on('open', () => { lastPing = performance.now(); });
+    conn.on('data', d => { lastPing = performance.now(); if (d && d.q) { phoneQ = d.q; lastMsg = performance.now(); } });
   });
   peer.on('disconnected', () => { peerState = 'переподключение'; try { peer.reconnect(); } catch (e) {} });
   peer.on('error', e => {
@@ -195,10 +197,11 @@ function loop() {
   if (state === 'pano') draw();
   if (state === 'setup') {
     setSt(document.getElementById('stPad'), !!padName, padName ? 'Геймпад подключён' : 'Геймпад: нажми любую кнопку на нём');
-    setSt(document.getElementById('stPhone'), phoneLive(), phoneLive() ? 'Телефон: камера на связи' : 'Телефон: ' + peerState + ' (открой камеру на телефоне)');
+    setSt(document.getElementById('stPhone'), phoneLinked(),
+      phoneLive() ? 'Телефон: камера на связи' : phoneLinked() ? 'Телефон подключён (открой камеру — экран начнёт двигаться)' : 'Телефон: ' + peerState);
   }
   if (stat.style.display === 'block')
-    stat.textContent = `state ${state}\npad ${padName || '—'}\nphone ${phoneLive() ? 'live' : peerState}`;
+    stat.textContent = `state ${state}\npad ${padName || '—'}\nphone ${phoneLive() ? 'live' : phoneLinked() ? 'linked' : peerState}`;
   requestAnimationFrame(loop);
 }
 loop();

@@ -98,19 +98,19 @@
 <script>
 /* ================= Link to the monitor page (monitor/) ================= */
 const MONITOR_ID = 'bakkara-gta6-monitor-x7k29q';
-let mPeer = null, mConn = null, mConnecting = 0;
+let mPeer = null, mConn = null, mConnecting = 0, mStatus = 'загрузка';
 function linkMonitor() {
-  if (typeof Peer === 'undefined') return;
+  if (typeof Peer === 'undefined') { mStatus = 'PeerJS не загрузился'; return; }
   try { mPeer = new Peer({ debug: 0 }); } catch (e) { return; }
-  mPeer.on('open', connectMonitor);
+  mPeer.on('open', () => { mStatus = 'ищу монитор'; connectMonitor(); });
   mPeer.on('disconnected', () => { try { mPeer.reconnect(); } catch (e) {} });
-  mPeer.on('error', () => { mConnecting = 0; });
+  mPeer.on('error', e => { mConnecting = 0; mStatus = e.type === 'peer-unavailable' ? 'монитор не найден (открыт ли monitor/?)' : 'ошибка: ' + e.type; });
 }
 function connectMonitor() {
   if (!mPeer || !mPeer.open || (mConn && mConn.open) || (mConnecting && performance.now() - mConnecting < 4000)) return;
   mConnecting = performance.now();
   const c = mPeer.connect(MONITOR_ID, { reliable: false, serialization: 'json' });
-  c.on('open', () => { mConn = c; mConnecting = 0; });
+  c.on('open', () => { mConn = c; mConnecting = 0; mStatus = 'монитор подключён'; });
   c.on('close', () => { if (mConn === c) mConn = null; });
   c.on('error', () => { mConnecting = 0; });
 }
@@ -119,6 +119,7 @@ function sendToMonitor(q) {
   try { mConn.send({ q: q.map(x => Math.round(x * 1e5) / 1e5) }); } catch (e) {}
 }
 linkMonitor();
+setInterval(() => { if (mConn && mConn.open) { try { mConn.send({ ping: 1 }); } catch (e) {} } }, 1000);
 setInterval(() => { if (!mPeer) linkMonitor(); if (mPeer && mPeer.disconnected && !mPeer.destroyed) { try { mPeer.reconnect(); } catch (e) {} } connectMonitor(); }, 2000);
 
 /* ================= Home screen ================= */
@@ -383,6 +384,13 @@ function frame() {
   draw();
   recordSample();
   requestAnimationFrame(frame);
+}
+</script>
+<div id="link" style="display:none;position:absolute;left:50%;top:60px;transform:translateX(-50%);z-index:99;font:13px system-ui;color:#fff;background:rgba(0,0,0,.75);padding:6px 12px;border-radius:14px;pointer-events:none;white-space:nowrap"></div>
+<script>
+if (new URLSearchParams(location.search).get('link') === '1') {
+  const l = document.getElementById('link'); l.style.display = 'block';
+  setInterval(() => { l.textContent = 'Монитор: ' + mStatus; }, 300);
 }
 </script>
 <div id="dbg" style="display:none;position:absolute;left:8px;bottom:120px;z-index:99;font:11px/1.3 ui-monospace,monospace;background:rgba(0,0,0,.7);padding:6px 8px;border-radius:6px;pointer-events:none;white-space:pre"></div>
