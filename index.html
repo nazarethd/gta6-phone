@@ -94,7 +94,33 @@
   <div id="flash"></div>
 </div>
 
+<script async src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
+/* ================= Link to the monitor page (monitor/) ================= */
+const MONITOR_ID = 'bakkara-gta6-monitor-x7k29q';
+let mPeer = null, mConn = null, mConnecting = 0;
+function linkMonitor() {
+  if (typeof Peer === 'undefined') return;
+  try { mPeer = new Peer({ debug: 0 }); } catch (e) { return; }
+  mPeer.on('open', connectMonitor);
+  mPeer.on('disconnected', () => { try { mPeer.reconnect(); } catch (e) {} });
+  mPeer.on('error', () => { mConnecting = 0; });
+}
+function connectMonitor() {
+  if (!mPeer || !mPeer.open || (mConn && mConn.open) || (mConnecting && performance.now() - mConnecting < 4000)) return;
+  mConnecting = performance.now();
+  const c = mPeer.connect(MONITOR_ID, { reliable: false, serialization: 'json' });
+  c.on('open', () => { mConn = c; mConnecting = 0; });
+  c.on('close', () => { if (mConn === c) mConn = null; });
+  c.on('error', () => { mConnecting = 0; });
+}
+function sendToMonitor(q) {
+  if (!mConn || !mConn.open) return;
+  try { mConn.send({ q: q.map(x => Math.round(x * 1e5) / 1e5) }); } catch (e) {}
+}
+linkMonitor();
+setInterval(() => { if (!mPeer) linkMonitor(); if (mPeer && mPeer.disconnected && !mPeer.destroyed) { try { mPeer.reconnect(); } catch (e) {} } connectMonitor(); }, 2000);
+
 /* ================= Home screen ================= */
 const APPS = [
   ['messages','Messages',3], ['phone','Phone'], ['camera','Camera'], ['feed','Feed',2],
@@ -345,6 +371,7 @@ function draw() {
   const cy = Math.cos(touchYaw / 2), sy = Math.sin(touchYaw / 2), cp = Math.cos(touchPitch / 2), sp = Math.sin(touchPitch / 2);
   const qTouch = qMul([cy, 0, -sy, 0], [cp, sp, 0, 0]);
   const q = qMul(qTouch, hasGyro ? qCur : [1,0,0,0]);
+  sendToMonitor(q);
   gl.uniformMatrix3fv(loc.R, false, quatToMat3(q));
   const tY = Math.tan(BASE_VFOV / 2 / zoom);
   gl.uniform2f(loc.tanH, tY * w / h, tY);

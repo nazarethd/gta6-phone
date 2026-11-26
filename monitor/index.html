@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>GTA 6 — monitor</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body.live { cursor: none; }
+  #v, #c { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #v { object-fit: cover; }
+  #c { display: none; }
+  #fade { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity .6s ease; }
+  #start { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+           background: rgba(0,0,0,.88); color: #fff; font: 16px/1.5 system-ui, sans-serif; cursor: pointer; text-align: center; }
+  #start b { font-size: 26px; }
+  #start .row { display: flex; gap: 28px; }
+  #start .st::before { content: '●'; margin-right: 8px; color: #e55; }
+  #start .st.ok::before { color: #4d4; }
+  #start small { color: #999; max-width: 560px; }
+  #stat { position: absolute; left: 12px; bottom: 10px; font: 12px ui-monospace, monospace; color: #8f8; display: none; white-space: pre; }
+</style>
+</head>
+<body>
+<video id="v" src="intro.mp4" preload="auto" playsinline></video>
+<canvas id="c"></canvas>
+<div id="fade"></div>
+<div id="stat"></div>
+<div id="start">
+  <b>Нажми, чтобы начать</b>
+  <div class="row"><span class="st" id="stPad">Геймпад</span><span class="st" id="stPhone">Телефон</span></div>
+  <small>Любая кнопка — видео · стрелка вверх — панорама · Options — сначала<br>
+  Клавиатура: пробел — видео · ↑ — панорама · R — сначала · S — статус</small>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+/* ---------- shared with the phone app ---------- */
+const MONITOR_ID = 'bakkara-gta6-monitor-x7k29q';
+const PANO = { src: '../assets/panorama.jpg', W: 2340, H: 1532, f: 1136, cx: 1170, cy: 760 };
+const params = new URLSearchParams(location.search);
+const VFOV = (+params.get('fov') || 45) * Math.PI / 180;     // vertical field of view on the monitor
+const SMOOTH = +params.get('smooth') || 0.3;                   // 1 = no smoothing
+
+const v = document.getElementById('v'), c = document.getElementById('c'), fade = document.getElementById('fade');
+const start = document.getElementById('start'), stat = document.getElementById('stat');
+let state = 'setup';            // setup → ready → playing → held → pano
+
+/* ---------- start overlay (gives the page a user gesture for fullscreen + sound) ---------- */
+start.addEventListener('click', () => {
+  document.documentElement.requestFullscreen?.().catch(() => {});
+  start.style.display = 'none'; document.body.classList.add('live');
+  reset();
+});
+
+/* ---------- flow ---------- */
+function reset() {
+  state = 'ready';
+  v.pause(); v.currentTime = 0; v.style.display = 'block'; c.style.display = 'none';
+  fade.style.opacity = 0;
+}
+function playIntro() {
+  if (state !== 'ready') return;
+  state = 'playing'; v.play().catch(() => { v.muted = true; v.play(); });
+}
+v.addEventListener('ended', () => { if (state === 'playing') state = 'held'; });
+function toPano() {
+  if (state !== 'held') return;
+  state = 'fading';
+  fade.style.opacity = 1;
+  setTimeout(() => {
+    v.style.display = 'none'; c.style.display = 'block';
+    qCur = phoneLive() ? phoneQ.slice() : [1, 0, 0, 0];
+    state = 'pano'; draw();
+    requestAnimationFrame(() => { fade.style.opacity = 0; });
+  }, 650);
+}
+function onButton(i) {
+  if (state === 'setup') return;
+  if (i === 12) toPano();          // D-pad up
+  else if (i === 9) reset();       // Options
+  else playIntro();                // any other button
+}
+addEventListener('keydown', e => {
+  if (e.code === 'KeyS') { stat.style.display = stat.style.display === 'block' ? 'none' : 'block'; return; }
+  if (state === 'setup') return;
+  if (e.code === 'ArrowUp') toPano();
+  else if (e.code === 'KeyR') reset();
+  else if (e.code === 'Space' || e.code === 'Enter') playIntro();
+});
+
+/* ---------- gamepad ---------- */
+const prev = {};
+let padName = '';
+function pollPad() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  padName = '';
+  for (const p of pads) {
+    if (!p) continue;
+    padName = p.id;
+    p.buttons.forEach((b, i) => {
+      const k = p.index + ':' + i;
+      if (b.pressed && !prev[k]) onButton(i);
+      prev[k] = b.pressed;
+    });
+  }
+}
+
+/* ---------- phone link (WebRTC via PeerJS) ---------- */
+let peer = null, phoneQ = [1, 0, 0, 0], lastMsg = 0, peerState = 'connecting';
+const phoneLive = () => performance.now() - lastMsg < 1500;
+function startPeer() {
+  if (typeof Peer === 'undefined') { peerState = 'PeerJS не загрузился'; return; }
+  peer = new Peer(MONITOR_ID, { debug: 0 });
+  peer.on('open', () => { peerState = 'ждёт телефон'; });
+  peer.on('connection', conn => {
+    conn.on('data', d => { if (d && d.q) { phoneQ = d.q; lastMsg = performance.now(); } });
+  });
+  peer.on('disconnected', () => { peerState = 'переподключение'; try { peer.reconnect(); } catch (e) {} });
+  peer.on('error', e => {
+    peerState = 'ошибка: ' + e.type;
+    if (e.type === 'unavailable-id' || e.type === 'network' || e.type === 'server-error') {
+      try { peer.destroy(); } catch (_) {}
+      setTimeout(startPeer, 3000);
+    }
+  });
+}
+startPeer();
+
+/* ---------- panorama (same projection as the phone camera) ---------- */
+const gl = c.getContext('webgl', { antialias: false });
+const vs = `attribute vec2 p; varying vec2 v; void main(){ v=p; gl_Position=vec4(p,0.,1.); }`;
+const fs = `precision highp float; varying vec2 v;
+  uniform sampler2D tex; uniform mat3 R; uniform vec2 tanH; uniform vec4 pano; uniform vec2 cxy;
+  void main(){
+    vec3 d = R * normalize(vec3(v.x*tanH.x, v.y*tanH.y, -1.0));
+    float yaw = atan(d.x, -d.z);
+    float pitch = atan(d.y, length(d.xz));
+    vec2 uv = vec2((cxy.x + yaw*pano.z)/pano.x, (cxy.y - pitch*pano.z)/pano.y);
+    vec3 c = texture2D(tex, clamp(uv, 0.0, 1.0)).rgb;
+    vec2 o = max(vec2(0.0), max(-uv, uv - 1.0));
+    c *= 1.0 - smoothstep(0.0, 0.25, length(o));
+    gl_FragColor = vec4(c, 1.0);
+  }`;
+const sh = (t, s) => { const x = gl.createShader(t); gl.shaderSource(x, s); gl.compileShader(x); return x; };
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(prog); gl.useProgram(prog);
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+const pl = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(pl); gl.vertexAttribPointer(pl, 2, gl.FLOAT, false, 0, 0);
+const loc = {}; ['R','tanH','pano','cxy','tex'].forEach(n => loc[n] = gl.getUniformLocation(prog, n));
+const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 1, 1, 0, gl.RGB, gl.UNSIGNED_BYTE, new Uint8Array([0,0,0]));
+const img = new Image();
+img.onload = () => { gl.bindTexture(gl.TEXTURE_2D, tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, img); };
+img.src = PANO.src;
+gl.uniform1i(loc.tex, 0);
+gl.uniform4f(loc.pano, PANO.W, PANO.H, PANO.f, 0);
+gl.uniform2f(loc.cxy, PANO.cx, PANO.cy);
+
+function qSlerp(a, b, t) {
+  let d = a[0]*b[0] + a[1]*b[1] + a[2]*b[2] + a[3]*b[3];
+  if (d < 0) { b = b.map(x => -x); d = -d; }
+  if (d > 0.9995) { const r = a.map((x, i) => x + (b[i] - x) * t); const n = Math.hypot(...r); return r.map(x => x / n); }
+  const th = Math.acos(d), s = Math.sin(th), wa = Math.sin((1 - t) * th) / s, wb = Math.sin(t * th) / s;
+  return a.map((x, i) => x * wa + b[i] * wb);
+}
+function quatToMat3(q) {
+  const [w, x, y, z] = q;
+  return new Float32Array([
+    1 - 2*(y*y + z*z), 2*(x*y + z*w),     2*(x*z - y*w),
+    2*(x*y - z*w),     1 - 2*(x*x + z*z), 2*(y*z + x*w),
+    2*(x*z + y*w),     2*(y*z - x*w),     1 - 2*(x*x + y*y)]);
+}
+let qCur = [1, 0, 0, 0];
+function draw() {
+  const w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  gl.viewport(0, 0, w, h);
+  qCur = qSlerp(qCur, phoneLive() ? phoneQ : qCur, SMOOTH);
+  gl.uniformMatrix3fv(loc.R, false, quatToMat3(qCur));
+  const tY = Math.tan(VFOV / 2);
+  gl.uniform2f(loc.tanH, tY * w / h, tY);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+/* ---------- loop ---------- */
+function setSt(el, ok, text) { el.classList.toggle('ok', ok); el.textContent = text; }
+function loop() {
+  pollPad();
+  if (state === 'pano') draw();
+  if (state === 'setup') {
+    setSt(document.getElementById('stPad'), !!padName, padName ? 'Геймпад подключён' : 'Геймпад: нажми любую кнопку на нём');
+    setSt(document.getElementById('stPhone'), phoneLive(), phoneLive() ? 'Телефон: камера на связи' : 'Телефон: ' + peerState + ' (открой камеру на телефоне)');
+  }
+  if (stat.style.display === 'block')
+    stat.textContent = `state ${state}\npad ${padName || '—'}\nphone ${phoneLive() ? 'live' : peerState}`;
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
