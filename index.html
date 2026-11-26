@@ -94,33 +94,28 @@
   <div id="flash"></div>
 </div>
 
-<script async src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="assets/mqtt.min.js"></script>
 <script>
 /* ================= Link to the monitor page (monitor/) ================= */
-const MONITOR_ID = 'bakkara-gta6-monitor-x7k29q';
-let mPeer = null, mConn = null, mConnecting = 0, mStatus = 'загрузка';
+const LINK_TOPIC = 'bakkara-gta6-x7k29q/q';
+const BROKER = new URLSearchParams(location.search).get('broker') || 'wss://broker.emqx.io:8084/mqtt';
+let mCli = null, mStatus = 'загрузка', mLastSend = 0;
 function linkMonitor() {
-  if (typeof Peer === 'undefined') { mStatus = 'PeerJS не загрузился'; return; }
-  try { mPeer = new Peer({ debug: 0 }); } catch (e) { return; }
-  mPeer.on('open', () => { mStatus = 'ищу монитор'; connectMonitor(); });
-  mPeer.on('disconnected', () => { try { mPeer.reconnect(); } catch (e) {} });
-  mPeer.on('error', e => { mConnecting = 0; mStatus = e.type === 'peer-unavailable' ? 'монитор не найден (открыт ли monitor/?)' : 'ошибка: ' + e.type; });
+  if (typeof mqtt === 'undefined') { mStatus = 'mqtt не загрузился'; return; }
+  mStatus = 'подключение к серверу';
+  mCli = mqtt.connect(BROKER, { reconnectPeriod: 2000, connectTimeout: 8000, keepalive: 20, clean: true });
+  mCli.on('connect', () => { mStatus = 'на связи (монитор увидит телефон)'; });
+  mCli.on('reconnect', () => { mStatus = 'переподключение'; });
+  mCli.on('offline', () => { mStatus = 'нет связи с сервером'; });
+  mCli.on('error', e => { mStatus = 'ошибка: ' + (e && e.message || e); });
 }
-function connectMonitor() {
-  if (!mPeer || !mPeer.open || (mConn && mConn.open) || (mConnecting && performance.now() - mConnecting < 4000)) return;
-  mConnecting = performance.now();
-  const c = mPeer.connect(MONITOR_ID, { reliable: false, serialization: 'json' });
-  c.on('open', () => { mConn = c; mConnecting = 0; mStatus = 'монитор подключён'; });
-  c.on('close', () => { if (mConn === c) mConn = null; });
-  c.on('error', () => { mConnecting = 0; });
-}
+function pub(o) { if (mCli && mCli.connected) { try { mCli.publish(LINK_TOPIC, JSON.stringify(o), { qos: 0 }); } catch (e) {} } }
 function sendToMonitor(q) {
-  if (!mConn || !mConn.open) return;
-  try { mConn.send({ q: q.map(x => Math.round(x * 1e5) / 1e5) }); } catch (e) {}
+  const t = performance.now(); if (t - mLastSend < 33) return; mLastSend = t;
+  pub({ q: q.map(x => Math.round(x * 1e5) / 1e5) });
 }
 linkMonitor();
-setInterval(() => { if (mConn && mConn.open) { try { mConn.send({ ping: 1 }); } catch (e) {} } }, 1000);
-setInterval(() => { if (!mPeer) linkMonitor(); if (mPeer && mPeer.disconnected && !mPeer.destroyed) { try { mPeer.reconnect(); } catch (e) {} } connectMonitor(); }, 2000);
+setInterval(() => pub({ ping: 1 }), 1000);
 
 /* ================= Home screen ================= */
 const APPS = [

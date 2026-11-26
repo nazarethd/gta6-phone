@@ -33,10 +33,9 @@
   Клавиатура: пробел — видео · ↑ — панорама · R — сначала · S — статус</small>
 </div>
 
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="../assets/mqtt.min.js"></script>
 <script>
 /* ---------- shared with the phone app ---------- */
-const MONITOR_ID = 'bakkara-gta6-monitor-x7k29q';
 const PANO = { src: '../assets/panorama.jpg', W: 2340, H: 1532, f: 1136, cx: 1170, cy: 760 };
 const params = new URLSearchParams(location.search);
 const VFOV = (+params.get('fov') || 45) * Math.PI / 180;     // vertical field of view on the monitor
@@ -106,25 +105,23 @@ function pollPad() {
   }
 }
 
-/* ---------- phone link (WebRTC via PeerJS) ---------- */
-let peer = null, phoneQ = [1, 0, 0, 0], lastMsg = 0, lastPing = 0, peerState = 'подключение к серверу';
+/* ---------- phone link (MQTT relay) ---------- */
+const LINK_TOPIC = 'bakkara-gta6-x7k29q/q';
+const BROKER = new URLSearchParams(location.search).get('broker') || 'wss://broker.emqx.io:8084/mqtt';
+let cli = null, phoneQ = [1, 0, 0, 0], lastMsg = 0, lastPing = 0, peerState = 'подключение к серверу';
 const phoneLive = () => performance.now() - lastMsg < 1500;
 const phoneLinked = () => performance.now() - lastPing < 3000;
 function startPeer() {
-  if (typeof Peer === 'undefined') { peerState = 'PeerJS не загрузился'; return; }
-  peer = new Peer(MONITOR_ID, { debug: 0 });
-  peer.on('open', () => { peerState = 'ждёт телефон'; });
-  peer.on('connection', conn => {
-    conn.on('open', () => { lastPing = performance.now(); });
-    conn.on('data', d => { lastPing = performance.now(); if (d && d.q) { phoneQ = d.q; lastMsg = performance.now(); } });
-  });
-  peer.on('disconnected', () => { peerState = 'переподключение'; try { peer.reconnect(); } catch (e) {} });
-  peer.on('error', e => {
-    peerState = 'ошибка: ' + e.type;
-    if (e.type === 'unavailable-id' || e.type === 'network' || e.type === 'server-error') {
-      try { peer.destroy(); } catch (_) {}
-      setTimeout(startPeer, 3000);
-    }
+  if (typeof mqtt === 'undefined') { peerState = 'mqtt не загрузился'; return; }
+  cli = mqtt.connect(BROKER, { reconnectPeriod: 2000, connectTimeout: 8000, keepalive: 20, clean: true });
+  cli.on('connect', () => { peerState = 'ждёт телефон'; cli.subscribe(LINK_TOPIC, { qos: 0 }); });
+  cli.on('reconnect', () => { peerState = 'переподключение'; });
+  cli.on('offline', () => { peerState = 'нет связи с сервером'; });
+  cli.on('error', e => { peerState = 'ошибка: ' + (e && e.message || e); });
+  cli.on('message', (t, buf) => {
+    let d; try { d = JSON.parse(buf.toString()); } catch (e) { return; }
+    lastPing = performance.now();
+    if (d && Array.isArray(d.q) && d.q.length === 4) { phoneQ = d.q; lastMsg = performance.now(); }
   });
 }
 startPeer();
