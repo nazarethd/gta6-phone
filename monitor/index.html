@@ -14,23 +14,14 @@
   #start { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
            background: rgba(0,0,0,.88); color: #fff; font: 16px/1.5 system-ui, sans-serif; cursor: pointer; text-align: center; }
   #start b { font-size: 26px; }
-  #start .row { display: flex; gap: 28px; }
-  #start .st::before { content: '●'; margin-right: 8px; color: #e55; }
-  #start .st.ok::before { color: #4d4; }
-  #start small { color: #999; max-width: 560px; }
-  #stat { position: absolute; left: 12px; bottom: 10px; font: 12px ui-monospace, monospace; color: #8f8; display: none; white-space: pre; }
 </style>
 </head>
 <body>
 <video id="v" src="intro.mp4" preload="auto" playsinline></video>
 <canvas id="c"></canvas>
 <div id="fade"></div>
-<div id="stat"></div>
 <div id="start">
   <b>Нажми, чтобы начать</b>
-  <div class="row"><span class="st" id="stPad">Геймпад</span><span class="st" id="stPhone">Телефон</span></div>
-  <small>Любая кнопка — видео · стрелка вверх — панорама · Options — сначала<br>
-  Клавиатура: пробел — видео · ↑ — панорама · R — сначала · S — статус</small>
 </div>
 
 <script src="../assets/mqtt.min.js"></script>
@@ -42,7 +33,7 @@ const VFOV = (+params.get('fov') || 45) * Math.PI / 180;     // vertical field o
 const SMOOTH = +params.get('smooth') || 0.3;                   // 1 = no smoothing
 
 const v = document.getElementById('v'), c = document.getElementById('c'), fade = document.getElementById('fade');
-const start = document.getElementById('start'), stat = document.getElementById('stat');
+const start = document.getElementById('start');
 let state = 'setup';            // setup → ready → playing → held → pano
 
 /* ---------- start overlay (gives the page a user gesture for fullscreen + sound) ---------- */
@@ -58,9 +49,13 @@ function reset() {
   v.pause(); v.currentTime = 0; v.style.display = 'block'; c.style.display = 'none';
   fade.style.opacity = 0;
 }
-function playIntro() {
-  if (state !== 'ready') return;
-  state = 'playing'; v.play().catch(() => { v.muted = true; v.play(); });
+/* intro plays only while a stick is moved (or Space is held), pauses when released */
+let stickActive = false, spaceHeld = false;
+function driveIntro() {
+  if (state !== 'ready' && state !== 'playing') return;
+  const go = stickActive || spaceHeld;
+  if (go && v.paused && !v.ended) { state = 'playing'; v.play().catch(() => { v.muted = true; v.play(); }); }
+  else if (!go && !v.paused) v.pause();
 }
 v.addEventListener('ended', () => { if (state === 'playing') state = 'held'; });
 function toPano() {
@@ -78,25 +73,23 @@ function onButton(i) {
   if (state === 'setup') return;
   if (i === 12) toPano();          // D-pad up
   else if (i === 9) reset();       // Options
-  else playIntro();                // any other button
 }
 addEventListener('keydown', e => {
-  if (e.code === 'KeyS') { stat.style.display = stat.style.display === 'block' ? 'none' : 'block'; return; }
   if (state === 'setup') return;
   if (e.code === 'ArrowUp') toPano();
   else if (e.code === 'KeyR') reset();
-  else if (e.code === 'Space' || e.code === 'Enter') playIntro();
+  else if (e.code === 'Space') spaceHeld = true;
 });
+addEventListener('keyup', e => { if (e.code === 'Space') spaceHeld = false; });
 
 /* ---------- gamepad ---------- */
 const prev = {};
-let padName = '';
 function pollPad() {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-  padName = '';
+  stickActive = false;
   for (const p of pads) {
     if (!p) continue;
-    padName = p.id;
+    for (let a = 0; a < Math.min(4, p.axes.length); a++) if (Math.abs(p.axes[a]) > 0.25) stickActive = true;
     p.buttons.forEach((b, i) => {
       const k = p.index + ':' + i;
       if (b.pressed && !prev[k]) onButton(i);
@@ -107,7 +100,7 @@ function pollPad() {
 
 /* ---------- phone link (MQTT relay) ---------- */
 const LINK_TOPIC = 'bakkara-gta6-x7k29q/q';
-const BROKER = new URLSearchParams(location.search).get('broker') || 'wss://broker.emqx.io:8084/mqtt';
+const BROKER = new URLSearchParams(location.search).get('broker') || 'wss://broker.hivemq.com:8884/mqtt';
 let cli = null, phoneQ = [1, 0, 0, 0], lastMsg = 0, lastPing = 0, peerState = 'подключение к серверу';
 const phoneLive = () => performance.now() - lastMsg < 1500;
 const phoneLinked = () => performance.now() - lastPing < 3000;
@@ -188,17 +181,10 @@ function draw() {
 }
 
 /* ---------- loop ---------- */
-function setSt(el, ok, text) { el.classList.toggle('ok', ok); el.textContent = text; }
 function loop() {
   pollPad();
+  driveIntro();
   if (state === 'pano') draw();
-  if (state === 'setup') {
-    setSt(document.getElementById('stPad'), !!padName, padName ? 'Геймпад подключён' : 'Геймпад: нажми любую кнопку на нём');
-    setSt(document.getElementById('stPhone'), phoneLinked(),
-      phoneLive() ? 'Телефон: камера на связи' : phoneLinked() ? 'Телефон подключён (открой камеру — экран начнёт двигаться)' : 'Телефон: ' + peerState);
-  }
-  if (stat.style.display === 'block')
-    stat.textContent = `state ${state}\npad ${padName || '—'}\nphone ${phoneLive() ? 'live' : phoneLinked() ? 'linked' : peerState}`;
   requestAnimationFrame(loop);
 }
 loop();

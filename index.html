@@ -98,7 +98,7 @@
 <script>
 /* ================= Link to the monitor page (monitor/) ================= */
 const LINK_TOPIC = 'bakkara-gta6-x7k29q/q';
-const BROKER = new URLSearchParams(location.search).get('broker') || 'wss://broker.emqx.io:8084/mqtt';
+const BROKER = new URLSearchParams(location.search).get('broker') || 'wss://broker.hivemq.com:8884/mqtt';
 let mCli = null, mStatus = 'загрузка', mLastSend = 0;
 function linkMonitor() {
   if (typeof mqtt === 'undefined') { mStatus = 'mqtt не загрузился'; return; }
@@ -379,13 +379,6 @@ function frame() {
   draw();
   recordSample();
   requestAnimationFrame(frame);
-}
-</script>
-<div id="link" style="display:none;position:absolute;left:50%;top:60px;transform:translateX(-50%);z-index:99;font:13px system-ui;color:#fff;background:rgba(0,0,0,.75);padding:6px 12px;border-radius:14px;pointer-events:none;white-space:nowrap"></div>
-<script>
-if (new URLSearchParams(location.search).get('link') === '1') {
-  const l = document.getElementById('link'); l.style.display = 'block';
-  setInterval(() => { l.textContent = 'Монитор: ' + mStatus; }, 300);
 }
 </script>
 <div id="dbg" style="display:none;position:absolute;left:8px;bottom:120px;z-index:99;font:11px/1.3 ui-monospace,monospace;background:rgba(0,0,0,.7);padding:6px 8px;border-radius:6px;pointer-events:none;white-space:pre"></div>
